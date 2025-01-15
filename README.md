@@ -46,7 +46,7 @@ You can install this environment using either **pip** or **uv** (a minimal packa
    ```
 2. Install using `uv`:
    ```bash
-   uv pip install .
+   uv sync
    ```
    This should handle the necessary dependencies and set up the virtual environment.
 

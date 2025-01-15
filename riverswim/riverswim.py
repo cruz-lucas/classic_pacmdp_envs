@@ -96,7 +96,9 @@ class RiverSwimEnv(gym.Env):
 
         return transition_matrix
 
-    def reset(self, seed: int | None = None, options=None) -> int:
+    def reset(
+        self, seed: int | None = None, options=None
+    ) -> Tuple[int, Dict[str, Any]]:
         """Reset the environment to the initial state.
 
         Args:
@@ -111,7 +113,7 @@ class RiverSwimEnv(gym.Env):
         info = {}
         return self.current_state, info
 
-    def step(self, action: int) -> Tuple[int, int, bool, Dict[str, Any]]:
+    def step(self, action: int) -> Tuple[int, int, bool, bool, Dict[str, Any]]:
         """Take an action and progress the environment state.
 
         Args:
