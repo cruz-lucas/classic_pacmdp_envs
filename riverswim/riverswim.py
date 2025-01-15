@@ -43,19 +43,51 @@ class RiverSwimEnv(gym.Env):
         self.n_actions = 2
         self.current_state = 0
 
-        self.rewards = np.full(
-            shape=(n_states, self.n_actions), dtype=np.float32, fill_value=commom_reward
-        )
-        self.max_reward = max_reward
-        self.intermediate_reward = intermediate_reward
-        self.commom_reward = commom_reward
-
         self.action_space = gym.spaces.Discrete(self.n_actions)
         self.observation_space = gym.spaces.Discrete(n_states)
 
         self.chance_moving_right = chance_moving_right
         self.chance_carried_left = chance_carried_left
         self.render_mode = render_mode
+
+        self.max_reward = max_reward
+        self.intermediate_reward = intermediate_reward
+        self.commom_reward = commom_reward
+
+        self.transition = self._get_transition()
+
+    def _get_transition(self) -> np.ndarray:
+        """Returns the transition matrix for the environment.
+
+        Returns:
+            np.ndarray: transition matrix mapping (state, action, next state).
+        """
+        transition_matrix: np.ndarray = np.zeros(
+            shape=(self.n_states, self.n_actions, self.n_states), dtype=np.float32
+        )
+
+        transition_matrix[:, 0, :] = np.eye(
+            N=self.n_states, M=self.n_states, k=-1, dtype=np.float32
+        )
+        transition_matrix[0, 0, 0] = np.float32(1.0)
+
+        transition_matrix[:, 1, :] = (
+            np.eye(N=self.n_states, M=self.n_states, k=0, dtype=np.float32)
+            * (1 - self.chance_carried_left - self.chance_moving_right)
+            + np.eye(N=self.n_states, M=self.n_states, k=1, dtype=np.float32)
+            * self.chance_moving_right
+            + np.eye(N=self.n_states, M=self.n_states, k=-1, dtype=np.float32)
+            * self.chance_carried_left
+        )
+
+        transition_matrix[0, 1, 0] += self.chance_carried_left
+        transition_matrix[-1, 1, -2] = 1 - self.chance_moving_right
+        transition_matrix[-1, 1, -1] = self.chance_moving_right
+
+        assert all(transition_matrix[:, 0, :].sum(axis=-1) == 1.0)
+        assert all(transition_matrix[:, 1, :].sum(axis=-1) == 1.0)
+
+        return transition_matrix
 
     def reset(self, seed: int | None = None, options=None) -> int:
         """Reset the environment to the initial state.
@@ -88,24 +120,8 @@ class RiverSwimEnv(gym.Env):
         if action not in [0, 1]:
             raise ValueError("Invalid action. Must be 0 or 1.")
 
-        chance = self.np_random.random()
-        direction = 0
-
-        if action == 0:
-            direction = -1
-        else:
-            direction = 1 if chance < self.chance_moving_right else -1
-            if self.current_state != self.n_states - 1:
-                direction = (
-                    0
-                    if (chance > self.chance_moving_right)
-                    and (chance < 1 - self.chance_carried_left)
-                    else direction
-                )
-
-        next_state = np.clip(
-            self.current_state + direction, a_min=0, a_max=self.n_states - 1
-        )
+        probabilities = self.transition[self.current_state, action, :]
+        next_state = self.np_random.choice(self.n_states, p=probabilities)
 
         reward = self.commom_reward
         if self.current_state == next_state:
