@@ -24,8 +24,8 @@ class RiverSwimEnv(gym.Env):
         max_reward: int | float = 10_000,
         intermediate_reward: int | float = 5,
         commom_reward: int | float = 0,
-        chance_moving_right: float = 0.3,
-        chance_carried_left: float = 0.1,
+        p_right: float = 0.3,
+        p_left: float = 0.1,
         render_mode: str | None = None,
     ) -> None:
         """Initialize the RiverSwim environment.
@@ -35,8 +35,8 @@ class RiverSwimEnv(gym.Env):
             max_reward (int | float, optional): Reward to be given at the rightmost state. Defaults to 10_000.
             intermediate_reward (int | float, optional): Reward to be given at the leftmost state. Defaults to 5.
             commom_reward (int | float, optional): Reward to be given throughout the states that are not the main goal or subgoal. Defaults to 0.
-            chance_moving_right (float, optional): Chance of successfully moving right. Defaults to 0.3.
-            chance_carried_left (float, optional): Chance of trying to move right and going to the left instead, carried by the current. Defaults to 0.1.
+            p_right (float, optional): Chance of successfully moving right. Defaults to 0.3.
+            p_left (float, optional): Chance of trying to move right and going to the left instead, carried by the current. Defaults to 0.1.
             render_mode (str | None, optional): Mode for rendering.
         """
         self.n_states = n_states
@@ -46,8 +46,10 @@ class RiverSwimEnv(gym.Env):
         self.action_space = gym.spaces.Discrete(self.n_actions)
         self.observation_space = gym.spaces.Discrete(n_states)
 
-        self.chance_moving_right = chance_moving_right
-        self.chance_carried_left = chance_carried_left
+        self.p_right = p_right
+        self.p_left = p_left
+        self.p_stay = 1 - p_left - p_right
+
         self.render_mode = render_mode
 
         self.max_reward = max_reward
@@ -73,16 +75,16 @@ class RiverSwimEnv(gym.Env):
 
         transition_matrix[:, 1, :] = (
             np.eye(N=self.n_states, M=self.n_states, k=0, dtype=np.float32)
-            * (1 - self.chance_carried_left - self.chance_moving_right)
+            * (self.p_stay)
             + np.eye(N=self.n_states, M=self.n_states, k=1, dtype=np.float32)
-            * self.chance_moving_right
+            * self.p_right
             + np.eye(N=self.n_states, M=self.n_states, k=-1, dtype=np.float32)
-            * self.chance_carried_left
+            * self.p_left
         )
 
-        transition_matrix[0, 1, 0] += self.chance_carried_left
-        transition_matrix[-1, 1, -2] = 1 - self.chance_moving_right
-        transition_matrix[-1, 1, -1] = self.chance_moving_right
+        transition_matrix[0, 1, 0] += self.p_left
+        transition_matrix[-1, 1, -2] = 1 - self.p_right
+        transition_matrix[-1, 1, -1] = self.p_right
 
         assert all(transition_matrix[:, 0, :].sum(axis=-1) == 1.0)
         assert all(transition_matrix[:, 1, :].sum(axis=-1) == 1.0)
