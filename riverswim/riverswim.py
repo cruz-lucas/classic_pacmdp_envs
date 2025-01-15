@@ -41,7 +41,7 @@ class RiverSwimEnv(gym.Env):
         """
         self.n_states = n_states
         self.n_actions = 2
-        self.current_state = 0
+        self.current_state: int = 0
 
         self.action_space = gym.spaces.Discrete(self.n_actions)
         self.observation_space = gym.spaces.Discrete(n_states)
@@ -68,23 +68,20 @@ class RiverSwimEnv(gym.Env):
             shape=(self.n_states, self.n_actions, self.n_states), dtype=np.float32
         )
 
-        transition_matrix[:, 0, :] = np.eye(
-            N=self.n_states, M=self.n_states, k=-1, dtype=np.float32
-        )
-        transition_matrix[0, 0, 0] = np.float32(1.0)
+        for i in range(self.n_states):
+            if i > 0:
+                transition_matrix[i, 0, i - 1] = 1.0
+                transition_matrix[i, 1, i - 1] = self.p_left
+                transition_matrix[i, 1, i] = self.p_stay
+            else:
+                transition_matrix[i, 0, i] = 1.0
+                transition_matrix[i, 1, i] = self.p_stay + self.p_left
 
-        transition_matrix[:, 1, :] = (
-            np.eye(N=self.n_states, M=self.n_states, k=0, dtype=np.float32)
-            * (self.p_stay)
-            + np.eye(N=self.n_states, M=self.n_states, k=1, dtype=np.float32)
-            * self.p_right
-            + np.eye(N=self.n_states, M=self.n_states, k=-1, dtype=np.float32)
-            * self.p_left
-        )
-
-        transition_matrix[0, 1, 0] += self.p_left
-        transition_matrix[-1, 1, -2] = 1 - self.p_right
-        transition_matrix[-1, 1, -1] = self.p_right
+            if i < self.n_states - 1:
+                transition_matrix[i, 1, i + 1] = self.p_right
+            else:
+                transition_matrix[i, 1, i] = self.p_right
+                transition_matrix[i, 1, i - 1] = 1 - self.p_right
 
         assert all(transition_matrix[:, 0, :].sum(axis=-1) == 1.0)
         assert all(transition_matrix[:, 1, :].sum(axis=-1) == 1.0)
@@ -162,8 +159,11 @@ if __name__ == "__main__":
     env = RiverSwimEnv(render_mode="ansi")
 
     obs, info = env.reset()
+
+    print("\nAction left:\n", env.transition[:, 0, :])
+    print("\nAction right:\n", env.transition[:, 1, :], "\n\n")
+
     env.render()
-    # print(obs, info)
 
     terminal = False
     while not terminal:
