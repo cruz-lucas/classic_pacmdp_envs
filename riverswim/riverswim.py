@@ -113,7 +113,7 @@ class RiverSwimEnv(gym.Env):
         info = {}
         return self.current_state, info
 
-    def step(self, action: int) -> Tuple[int, int, bool, bool, Dict[str, Any]]:
+    def step(self, action: int) -> Tuple[int, int | float, bool, bool, Dict[str, Any]]:
         """Take an action and progress the environment state.
 
         Args:
