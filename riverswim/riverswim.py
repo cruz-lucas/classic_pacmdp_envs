@@ -26,6 +26,8 @@ class RiverSwimEnv(gym.Env):
         commom_reward: int | float = 0,
         p_right: float = 0.3,
         p_left: float = 0.1,
+        random_initial_state: bool = False,
+        initial_state: int = 0,
         render_mode: str | None = None,
     ) -> None:
         """Initialize the RiverSwim environment.
@@ -37,11 +39,17 @@ class RiverSwimEnv(gym.Env):
             commom_reward (int | float, optional): Reward to be given throughout the states that are not the main goal or subgoal. Defaults to 0.
             p_right (float, optional): Chance of successfully moving right. Defaults to 0.3.
             p_left (float, optional): Chance of trying to move right and going to the left instead, carried by the current. Defaults to 0.1.
+            random_initial_state (bool, optional): Flag to randomize the initial state. Defaults to False.
+            initial_state (int, optional): Initial state. It's ignored if random_initial_state is 'True'. Defaults to 0.
             render_mode (str | None, optional): Mode for rendering.
         """
         self.n_states = n_states
         self.n_actions = 2
-        self.current_state: int = 0
+        self.current_state: int = (
+            initial_state
+            if not random_initial_state
+            else self.np_random.choice(n_states)
+        )
 
         self.action_space = gym.spaces.Discrete(self.n_actions)
         self.observation_space = gym.spaces.Discrete(n_states)
@@ -166,10 +174,14 @@ if __name__ == "__main__":
     env.render()
 
     terminal = False
+    step = 0
     while not terminal:
+        print(f"\nStep {step}")
+        env.render()
         action = int(input("Please input an action\n"))
         obs, reward, terminal, truncated, info = env.step(action)
-        env.render()
-        print(f"Reward: {reward}")
+        print(f"Reward: {reward}\n")
+
+        step += 1
 
     exit()
