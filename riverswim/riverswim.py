@@ -21,7 +21,7 @@ class RiverSwimEnv(gym.Env):
     def __init__(
         self,
         n_states: int = 6,
-        max_reward: int | float = 10_000_000,
+        max_reward: int | float = 10_000,
         intermediate_reward: int | float = 5,
         commom_reward: int | float = 0,
         chance_moving_right: float = 0.3,
@@ -32,7 +32,7 @@ class RiverSwimEnv(gym.Env):
 
         Args:
             n_states (int, optional): Number of states in the environment. Defaults to 6.
-            max_reward (int | float, optional): Reward to be given at the rightmost state. Defaults to 10_000_000.
+            max_reward (int | float, optional): Reward to be given at the rightmost state. Defaults to 10_000.
             intermediate_reward (int | float, optional): Reward to be given at the leftmost state. Defaults to 5.
             commom_reward (int | float, optional): Reward to be given throughout the states that are not the main goal or subgoal. Defaults to 0.
             chance_moving_right (float, optional): Chance of successfully moving right. Defaults to 0.3.
