@@ -39,29 +39,17 @@ You can install this environment using either **pip** or **uv** (a minimal packa
 
 ### 1. Installing via `uv`
 
-1. Clone this repository:
    ```bash
-   git clone https://github.com/cruz-lucas/riverswim.git
-   cd riverswim
+   uv add https://github.com/cruz-lucas/riverswim.git
    ```
-2. Install using `uv`:
-   ```bash
-   uv sync
-   ```
-   This should handle the necessary dependencies and set up the virtual environment.
+   This should handle the necessary dependencies and set up the virtual environment if you have a `pyproject.toml` file, if not, see use `uv init`.
 
 ### 2. Installing via `pip`
 
-1. Clone this repository:
    ```bash
-   git clone https://github.com/cruz-lucas/riverswim.git
-   cd riverswim
+   pip install git+https://github.com/cruz-lucas/riverswim.git
    ```
-2. Install the package locally:
-   ```bash
-   pip install .
-   ```
-   This command installs the RiverSwim environment into your Python environment (**consider using a virtual environment**, uv handles that for you).
+   This command installs the RiverSwim environment into your Python environment (**consider using a virtual environment**).
 
 ## Usage
 
