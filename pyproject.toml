@@ -3,18 +3,33 @@ requires = ["setuptools >= 61.0.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "riverswim"
-version = "0.1.0"
-description = "A minimal implementation of River Swim environment compatible with Gymnasium Env API."
+name = "classic_pacmdp_envs"
+description = "A minimal implementation of River Swim and Six Arms environments in Jax compatible with Gymnasium Env API."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 authors = [{ name = "Lucas Cruz", email = "lucas@lucas-cruz.com" }]
 license = { text = "MIT License" }
+keywords = ["Reinforcement Learning", "game", "RL", "AI", "gymnasium"]
 dependencies = [
+    "flax>=0.12.0",
     "gymnasium>=1.0.0",
     "ipykernel>=6.29.5",
+    "jax>=0.8.0",
     "numpy>=2.2.1",
     "pre-commit>=4.0.1",
+]
+dynamic = ["version"]
+
+[project.optional-dependencies]
+render = [
+    "pygame>=2.6.1",
+]
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.0.1",
+    "pytest>=8.4.2",
+    "ruff>=0.14.0",
 ]
 
 [tool.black]
@@ -22,22 +37,19 @@ dependencies = [
 [tool.isort]
 atomic = true
 profile = "black"
-src_paths = ["gymnasium", "tests", "docs/_scripts"]
+src_paths = ["classic_pacmdp_envs"]
 extra_standard_library = ["typing_extensions"]
 indent = 4
 lines_after_imports = 2
 multi_line_output = 3
 
 [tool.pyright]
-include = ["gymnasium/**"]
+include = ["classic_pacmdp_envs/**"]
 exclude = ["tests/**", "**/node_modules", "**/__pycache__"]
 strict = []
 
 typeCheckingMode = "basic"
-pythonVersion = "3.10"
+pythonVersion = "3.11"
 pythonPlatform = "All"
 typeshedPath = "typeshed"
 enableTypeIgnoreComments = true
-
-[tool.pytest.ini_options]
-filterwarnings = ["ignore::DeprecationWarning:gymnasium.*:"]

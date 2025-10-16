@@ -1,6 +1,6 @@
-# RiverSwim Environment
+# RiverSwim & SixArms Environments
 
-A minimal implementation of the RiverSwim environment described in:
+Minimal implementations of the RiverSwim and SixArms environments described in:
 
 > [**Alexander L. Strehl, Michael L. Littman,**
 > *An analysis of model-based Interval Estimation for Markov Decision Processes,
@@ -10,19 +10,20 @@ Volume 74, Issue 8
 
 ## Overview
 
-The RiverSwim environment is a classic small-scale Reinforcement Learning benchmark that features:
-- A 1D chain of states representing a "river."
-- Actions that let the agent swim left (safer but lower reward) or right (risky but with higher potential reward).
-- Probabilistic transitions that mimic the current of the river, pushing the agent to the left side.
+The paper introduces two small, structured Markov Decision Processes that stress-test exploration algorithms:
 
-This repository contains a **minimal** Python implementation of the RiverSwim environment, intended for educational and research purposes.
+- **RiverSwim:** A 1D chain with a strong current. Swimming right is risky but yields a very large reward in the rightmost state, while the leftmost state gives a small but reliable reward.
+- **SixArms:** A hub-and-spoke layout inspired by a stochastic multi-armed bandit. The hub state provides six different arms, each sending the agent to a different “room” with deterministic high rewards of varying magnitudes.
 
-## Environment Dynamics
+This repository contains compact Gymnasium-style implementations of both environments for experimentation and reproducibility.
 
-In RiverSwim, the agent starts in the first state along a linear chain (e.g., from left to right). At each step:
-1. The agent picks an action — typically "swim left" (0) or "swim right" (1).
-2. Due to the strong current, even if the agent chooses to move to the right, there's a certain probability it stays in the same state or is swept back to the left.
-3. The agent receives a reward when it reaches the extreme locations. On the leftmost state, it receives a small reward of 5 units, and on the rightmost state, a big reward of 10 thousands units.
+## RiverSwim Dynamics
+
+In RiverSwim, the agent starts near the left end of a six-state chain (states 1 or 2, zero-indexed). At each step:
+
+1. The agent picks an action — "swim left" (`0`) or "swim right" (`1`).
+2. Swimming right succeeds with probability `p_right` (default `0.3`) and can be swept left with probability `p_left` (`0.1`), otherwise the agent stays put.
+3. The agent receives a small reward of `5` when staying in the leftmost state after swimming left, and a large reward of `10 000` when remaining in the rightmost state after swimming right.
 
 A key challenge is balancing the exploration of the risky high-reward state on the right versus the safer low-reward state on the left.
 
@@ -31,6 +32,14 @@ Below is a figure from the original paper showing the schematic of RiverSwim:
 ![RiverSwim Environment](docs/img/riverswim.png)
 
 _(Image credit: Strehl et al., 2008)_
+
+## SixArms Dynamics
+
+SixArms consists of seven states. The agent begins in state `0` (the hub) and chooses one of six actions (arms):
+
+- Each arm has a different success probability; on success, the agent moves to a dedicated room (states `1` through `6`).
+- Inside each room, repeatedly selecting the matching action yields a deterministic high reward (from `50` up to `6000`), and the wrong action returns the agent to the hub without reward.
+- The rarer the success probability, the larger the payoff, forcing the learner to balance exploration of low-probability, high-reward arms against faster but suboptimal options.
 
 ## Installation
 
@@ -56,24 +65,22 @@ You can install this environment using either **pip** or **uv** (a minimal packa
 Once installed, you can use the environment as follows:
 
 ```python
-import gym
-import riverswim  # This import registers the environment
+import gymnasium as gym
+import riverswim  # Registers RiverSwim-v0 and SixArms-v0
 
 env = gym.make("RiverSwim-v0")
-obs = env.reset()
+obs, info = env.reset()
 
-done = False
-total_reward = 0
-while not done:
-    action = env.action_space.sample()  # random action
-    next_obs, reward, done, info = env.step(action)
-    total_reward += reward
+for _ in range(10):
+    action = env.action_space.sample()
+    obs, reward, terminated, truncated, info = env.step(action)
+    if terminated or truncated:
+        obs, info = env.reset()
 
 env.close()
-print(f"Episode finished with total reward: {total_reward}")
 ```
 
-If the environment is not tied to `gym.make`, you can still interact with it directly by instantiating it as described in the code within this repository. See `riverswim/env.py` for more details.
+If you prefer, you can instantiate the classes directly (see `riverswim/river_swim_env.py` and `riverswim/six_arms_env.py` for the reference implementations).
 
 ## Citing
 
