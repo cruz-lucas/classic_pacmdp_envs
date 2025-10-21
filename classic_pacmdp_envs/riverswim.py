@@ -6,6 +6,7 @@ from typing import NamedTuple, TypeAlias
 
 import jax
 import jax.numpy as jnp
+import jax.random as jrng
 import numpy as np
 from flax import struct
 from gymnasium import spaces
@@ -30,10 +31,11 @@ class EnvState(NamedTuple):
 
 
 @struct.dataclass
-class RiverSwimParams:
+class EnvParams:
     """Default parameters for River Swim environment."""
+    num_actions: int = 2
+    num_states: int = 6
 
-    # Probabilities must add up to 1
     p_right: float = 0.3
     p_left: float = 0.1
     p_stay: float = 0.6
@@ -54,28 +56,35 @@ class RiverSwimFunctional(
         jax.Array,
         jax.Array,
         RenderStateType,
-        RiverSwimParams,
+        EnvParams,
     ]
 ):
     """RiverSwim environment expressed through the functional Gymnasium API."""
-
-    action_space = spaces.Discrete(2)
-    observation_space = spaces.Discrete(6)
 
     metadata = {
         "render_modes": ["rgb_array"],
         "render_fps": 30,
     }
 
+    def __init__(self, params: EnvParams | None = None):
+        self.default_params = self.get_default_params()
+        params = self.default_params if params is None else params
+
+        self.action_space = spaces.Discrete(params.num_actions)
+        self.observation_space = spaces.Discrete(params.num_states)
+
+        if not jnp.allclose(params.p_left + params.p_stay + params.p_right, 1.0):
+            raise ValueError("The sum of probabilities must sum up to 1.0.")
+
     def initial(
-        self, rng: PRNGKeyType, params: RiverSwimParams | None = None
+        self, rng: PRNGKeyType, params: EnvParams | None = None
     ) -> EnvState:
         """Sample an initial state."""
         start_position = jax.random.choice(rng, jnp.arange(1, 3), p=jnp.full((2,), 1 / 2))
         return EnvState(position=jnp.asarray(start_position, dtype=jnp.int32))
 
     def observation(
-        self, state: EnvState, rng: PRNGKeyType, params: RiverSwimParams | None = None
+        self, state: EnvState, rng: PRNGKeyType, params: EnvParams | None = None
     ) -> jax.Array:
         """Returns the current state index as the observation."""
         return jnp.asarray(state.position, dtype=jnp.int32)
@@ -85,12 +94,13 @@ class RiverSwimFunctional(
         state: EnvState,
         action: jax.Array,
         rng: PRNGKeyType,
-        params: RiverSwimParams | None = None,
+        params: EnvParams | None = None,
     ) -> EnvState:
         """Sample the next state given the current state and action."""
-        params = self.get_default_params()
+        params = self.default_params if params is None else params
 
-        at_last_pos = jnp.equal(state.position, 5)
+        last_pos = params.num_states - 1
+        at_last_pos = jnp.equal(state.position, last_pos)
         delta_candidates = jnp.stack([-1, 0, 1])
         going_right_probabilities = jnp.where(
             at_last_pos,
@@ -102,8 +112,8 @@ class RiverSwimFunctional(
             ),
         )     
         
-        going_right_position = jnp.clip(state.position + jax.random.choice(rng, delta_candidates, p=going_right_probabilities), 0, 5)
-        going_left_position = jnp.clip(state.position -1, 0, 5)
+        going_right_position = jnp.clip(state.position + jax.random.choice(rng, delta_candidates, p=going_right_probabilities), 0, last_pos)
+        going_left_position = jnp.clip(state.position -1, 0, last_pos)
 
         next_position = (1 - action) * going_left_position + action * going_right_position
 
@@ -114,29 +124,30 @@ class RiverSwimFunctional(
         state: EnvState,
         action: jax.Array,
         next_state: EnvState,
-        params: RiverSwimParams | None = None,
+        rng: PRNGKeyType,
+        params: EnvParams | None = None,
     ) -> jax.Array:
         """Compute the reward for a state transition."""
-        params = self.get_default_params()
+        params = self.default_params if params is None else params
 
         same_state = jnp.equal(state.position, next_state.position)
 
         easy_reward = (1 - action) * jnp.equal(state.position, 0) * params.easy_reward
         hard_reward = (
-            action * same_state * jnp.equal(state.position, 5) * params.hard_reward
+            action * same_state * jnp.equal(state.position, params.num_states-1) * params.hard_reward
         )
 
         reward = easy_reward + hard_reward
         return jnp.asarray(reward, dtype=jnp.float32)
 
     def terminal(
-        self, state: EnvState, rng: PRNGKeyType, params: RiverSwimParams | None = None
+        self, state: EnvState, rng: PRNGKeyType, params: EnvParams | None = None
     ) -> jax.Array:
         """Riverswim has no terminal states."""
         return jnp.asarray(False, dtype=jnp.bool_)
 
     def state_info(
-        self, state: EnvState, params: RiverSwimParams | None = None
+        self, state: EnvState, params: EnvParams | None = None
     ) -> dict[str, jax.Array]:
         """Return debugging info for the given state."""
         return {"position": jnp.asarray(state.position, dtype=jnp.int32)}
@@ -187,12 +198,40 @@ class RiverSwimFunctional(
         """Nothing to clean up for the numpy-based renderer."""
         return None
 
-    def get_default_params(self, **kwargs) -> RiverSwimParams:
+    def get_default_params(self, **kwargs) -> EnvParams:
         """Get the default params."""
-        return RiverSwimParams(**kwargs)
+        return EnvParams(**kwargs)
 
 
-class RiverSwimJaxEnv(FunctionalJaxEnv, EzPickle):
+class RiverSwimJaxEnv(EzPickle):
+    """Jax-friendly API around the functional RiverSwim environment."""
+
+    metadata = {"render_modes": ["rgb_array"], "render_fps": 30, "jax": True}
+
+    def __init__(self, params: EnvParams | None = None, render_mode: str | None = None, **kwargs):
+        """Wraps functional environment."""
+        EzPickle.__init__(self, render_mode=render_mode, **kwargs)
+        env = RiverSwimFunctional(params=params)
+        env.transform(jax.jit)
+        self.env = env
+    
+    def reset(self, rng: PRNGKeyType):
+        """Resets the environment using the seed."""
+        return self.env.initial(rng=rng)
+    
+    def step(self, state: EnvState, action: jax.Array, rng: PRNGKeyType):
+        """Steps through the environment using the action."""
+        transition_key, obs_key, reward_key, termination_key = jrng.split(rng, 4)
+        next_state = self.env.transition(state, action, transition_key)
+        observation = self.env.observation(next_state, obs_key)
+        reward = self.env.reward(state, action, next_state, reward_key)
+        terminated = self.env.terminal(next_state, termination_key)
+        info = self.env.transition_info(state, action, next_state)
+
+        return next_state, observation, jnp.array(reward, dtype=float), jnp.array(terminated, dtype=bool), False, info
+
+
+class RiverSwim(FunctionalJaxEnv, EzPickle):
     """Gymnasium wrapper around the functional RiverSwim environment."""
 
     metadata = {"render_modes": ["rgb_array"], "render_fps": 30, "jax": True}
@@ -211,7 +250,22 @@ class RiverSwimJaxEnv(FunctionalJaxEnv, EzPickle):
 
 
 if __name__ == "__main__":
-    env = HumanRendering(RiverSwimJaxEnv(render_mode="rgb_array"))
+    # env = RiverSwimJaxEnv(render_mode="rgb_array")
+
+    # rng = jrng.key(0)
+    # state = env.reset(rng=rng)
+    # print(state)
+
+    # terminal = False
+    # while not terminal:
+    #     action = jnp.array(input("Please input an action\n"), dtype=int)
+
+    #     rng, step_key = jrng.split(rng, 2)
+    #     state, obs, reward, terminal, truncated, info = env.step(state, action, step_key)
+    #     print(obs, reward, terminal, truncated, info)
+
+    # exit()
+    env = HumanRendering(RiverSwim(render_mode="rgb_array"))
 
     obs, info = env.reset()
     print(obs, info)

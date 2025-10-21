@@ -170,7 +170,7 @@ class SixArmsFunctional(
         return None
 
 
-class SixArmsJaxEnv(FunctionalJaxEnv, EzPickle):
+class SixArms(FunctionalJaxEnv, EzPickle):
     """Gymnasium wrapper around the functional SixArms environment."""
 
     metadata = {"render_modes": ["rgb_array"], "render_fps": 1, "jax": True}
@@ -189,7 +189,7 @@ class SixArmsJaxEnv(FunctionalJaxEnv, EzPickle):
 
 
 if __name__ == "__main__":
-    env = HumanRendering(SixArmsJaxEnv(render_mode="rgb_array"))
+    env = HumanRendering(SixArms(render_mode="rgb_array"))
 
     obs, info = env.reset()
     print(obs, info)
