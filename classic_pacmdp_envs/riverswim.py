@@ -16,6 +16,9 @@ from gymnasium.utils import EzPickle
 from gymnasium.wrappers import HumanRendering
 
 
+PRNGKey: TypeAlias = jax.Array
+
+
 class RenderStateType(NamedTuple):
     """Persistent render configuration for the RiverSwim environment."""
 
@@ -28,11 +31,13 @@ class EnvState(NamedTuple):
     """Stateless RiverSwim environment state."""
 
     position: jax.Array
+    rng: PRNGKey
 
 
 @struct.dataclass
 class EnvParams:
     """Default parameters for River Swim environment."""
+
     num_actions: int = 2
     num_states: int = 6
 
@@ -43,9 +48,6 @@ class EnvParams:
     hard_reward: int | float = 10_000
     easy_reward: int | float = 5
     common_reward: int | float = 0
-
-
-PRNGKeyType: TypeAlias = jax.Array
 
 
 class RiverSwimFunctional(
@@ -67,24 +69,30 @@ class RiverSwimFunctional(
     }
 
     def __init__(self, params: EnvParams | None = None):
+        """Initiate environment."""
         self.default_params = self.get_default_params()
-        params = self.default_params if params is None else params
+        self.params = self.default_params if params is None else params
 
-        self.action_space = spaces.Discrete(params.num_actions)
-        self.observation_space = spaces.Discrete(params.num_states)
+        self.action_space = spaces.Discrete(self.params.num_actions)
+        self.observation_space = spaces.Discrete(self.params.num_states)
 
-        if not jnp.allclose(params.p_left + params.p_stay + params.p_right, 1.0):
+        if not jnp.allclose(
+            self.params.p_left + self.params.p_stay + self.params.p_right, 1.0
+        ):
             raise ValueError("The sum of probabilities must sum up to 1.0.")
 
-    def initial(
-        self, rng: PRNGKeyType, params: EnvParams | None = None
-    ) -> EnvState:
+    def initial(self, rng: PRNGKey, params: EnvParams | None = None) -> EnvState:
         """Sample an initial state."""
-        start_position = jax.random.choice(rng, jnp.arange(1, 3), p=jnp.full((2,), 1 / 2))
-        return EnvState(position=jnp.asarray(start_position, dtype=jnp.int32))
+        next_rng, sample_key = jrng.split(rng, 2)
+        start_position = jrng.choice(
+            sample_key, jnp.arange(1, 3), p=jnp.full((2,), 1 / 2)
+        )
+        return EnvState(
+            position=jnp.asarray(start_position, dtype=jnp.int32), rng=next_rng
+        )
 
     def observation(
-        self, state: EnvState, rng: PRNGKeyType, params: EnvParams | None = None
+        self, state: EnvState, params: EnvParams | None = None
     ) -> jax.Array:
         """Returns the current state index as the observation."""
         return jnp.asarray(state.position, dtype=jnp.int32)
@@ -93,56 +101,63 @@ class RiverSwimFunctional(
         self,
         state: EnvState,
         action: jax.Array,
-        rng: PRNGKeyType,
         params: EnvParams | None = None,
     ) -> EnvState:
         """Sample the next state given the current state and action."""
-        params = self.default_params if params is None else params
+        params = self.params
 
         last_pos = params.num_states - 1
         at_last_pos = jnp.equal(state.position, last_pos)
         delta_candidates = jnp.stack([-1, 0, 1])
         going_right_probabilities = jnp.where(
             at_last_pos,
-            jnp.asarray(
-                [1-params.p_right, 0.0, params.p_right], dtype=jnp.float32
-            ),
+            jnp.asarray([1 - params.p_right, 0.0, params.p_right], dtype=jnp.float32),
             jnp.asarray(
                 [params.p_left, params.p_stay, params.p_right], dtype=jnp.float32
             ),
-        )     
-        
-        going_right_position = jnp.clip(state.position + jax.random.choice(rng, delta_candidates, p=going_right_probabilities), 0, last_pos)
-        going_left_position = jnp.clip(state.position -1, 0, last_pos)
+        )
 
-        next_position = (1 - action) * going_left_position + action * going_right_position
+        next_rng, step_key = jrng.split(state.rng, 2)
+        going_right_position = jnp.clip(
+            state.position
+            + jrng.choice(step_key, delta_candidates, p=going_right_probabilities),
+            0,
+            last_pos,
+        )
+        going_left_position = jnp.clip(state.position - 1, 0, last_pos)
 
-        return EnvState(position=jnp.asarray(next_position, dtype=jnp.int32))
+        next_position = (
+            1 - action
+        ) * going_left_position + action * going_right_position
+
+        return EnvState(
+            position=jnp.asarray(next_position, dtype=jnp.int32), rng=next_rng
+        )
 
     def reward(
         self,
         state: EnvState,
         action: jax.Array,
         next_state: EnvState,
-        rng: PRNGKeyType,
         params: EnvParams | None = None,
     ) -> jax.Array:
         """Compute the reward for a state transition."""
-        params = self.default_params if params is None else params
+        params = self.params
 
         same_state = jnp.equal(state.position, next_state.position)
 
         easy_reward = (1 - action) * jnp.equal(state.position, 0) * params.easy_reward
         hard_reward = (
-            action * same_state * jnp.equal(state.position, params.num_states-1) * params.hard_reward
+            action
+            * same_state
+            * jnp.equal(state.position, params.num_states - 1)
+            * params.hard_reward
         )
 
         reward = easy_reward + hard_reward
         return jnp.asarray(reward, dtype=jnp.float32)
 
-    def terminal(
-        self, state: EnvState, rng: PRNGKeyType, params: EnvParams | None = None
-    ) -> jax.Array:
+    def terminal(self, state: EnvState, params: EnvParams | None = None) -> jax.Array:
         """Riverswim has no terminal states."""
         return jnp.asarray(False, dtype=jnp.bool_)
 
@@ -208,27 +223,35 @@ class RiverSwimJaxEnv(EzPickle):
 
     metadata = {"render_modes": ["rgb_array"], "render_fps": 30, "jax": True}
 
-    def __init__(self, params: EnvParams | None = None, render_mode: str | None = None, **kwargs):
+    def __init__(
+        self, params: EnvParams | None = None, render_mode: str | None = None, **kwargs
+    ):
         """Wraps functional environment."""
         EzPickle.__init__(self, render_mode=render_mode, **kwargs)
         env = RiverSwimFunctional(params=params)
         env.transform(jax.jit)
         self.env = env
-    
-    def reset(self, rng: PRNGKeyType):
+
+    def reset(self, rng: PRNGKey):
         """Resets the environment using the seed."""
         return self.env.initial(rng=rng)
-    
-    def step(self, state: EnvState, action: jax.Array, rng: PRNGKeyType):
+
+    def step(self, state: EnvState, action: jax.Array):
         """Steps through the environment using the action."""
-        transition_key, obs_key, reward_key, termination_key = jrng.split(rng, 4)
-        next_state = self.env.transition(state, action, transition_key)
-        observation = self.env.observation(next_state, obs_key)
-        reward = self.env.reward(state, action, next_state, reward_key)
-        terminated = self.env.terminal(next_state, termination_key)
+        next_state = self.env.transition(state, action)
+        observation = self.env.observation(next_state)
+        reward = self.env.reward(state, action, next_state)
+        terminated = self.env.terminal(next_state)
         info = self.env.transition_info(state, action, next_state)
 
-        return next_state, observation, jnp.array(reward, dtype=float), jnp.array(terminated, dtype=bool), False, info
+        return (
+            next_state,
+            observation,
+            jnp.array(reward, dtype=float),
+            jnp.array(terminated, dtype=bool),
+            False,
+            info,
+        )
 
 
 class RiverSwim(FunctionalJaxEnv, EzPickle):
@@ -260,8 +283,7 @@ if __name__ == "__main__":
     # while not terminal:
     #     action = jnp.array(input("Please input an action\n"), dtype=int)
 
-    #     rng, step_key = jrng.split(rng, 2)
-    #     state, obs, reward, terminal, truncated, info = env.step(state, action, step_key)
+    #     state, obs, reward, terminal, truncated, info = env.step(state, action)
     #     print(obs, reward, terminal, truncated, info)
 
     # exit()
