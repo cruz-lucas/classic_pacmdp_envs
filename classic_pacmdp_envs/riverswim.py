@@ -234,7 +234,8 @@ class RiverSwimJaxEnv(EzPickle):
 
     def reset(self, rng: PRNGKey):
         """Resets the environment using the seed."""
-        return self.env.initial(rng=rng)
+        initial_state = self.env.initial(rng=rng)
+        return initial_state, self.env.observation(initial_state)
 
     def step(self, state: EnvState, action: jax.Array):
         """Steps through the environment using the action."""
@@ -273,29 +274,29 @@ class RiverSwim(FunctionalJaxEnv, EzPickle):
 
 
 if __name__ == "__main__":
-    # env = RiverSwimJaxEnv(render_mode="rgb_array")
+    env = RiverSwimJaxEnv(render_mode="rgb_array")
 
-    # rng = jrng.key(0)
-    # state = env.reset(rng=rng)
-    # print(state)
-
-    # terminal = False
-    # while not terminal:
-    #     action = jnp.array(input("Please input an action\n"), dtype=int)
-
-    #     state, obs, reward, terminal, truncated, info = env.step(state, action)
-    #     print(obs, reward, terminal, truncated, info)
-
-    # exit()
-    env = HumanRendering(RiverSwim(render_mode="rgb_array"))
-
-    obs, info = env.reset()
-    print(obs, info)
+    rng = jrng.key(0)
+    state, obs = env.reset(rng=rng)
+    print(state)
 
     terminal = False
     while not terminal:
-        action = int(input("Please input an action\n"))
-        obs, reward, terminal, truncated, info = env.step(action)
+        action = jnp.array(input("Please input an action\n"), dtype=int)
+
+        state, obs, reward, terminal, truncated, info = env.step(state, action)
         print(obs, reward, terminal, truncated, info)
 
     exit()
+    # env = HumanRendering(RiverSwim(render_mode="rgb_array"))
+
+    # obs, info = env.reset()
+    # print(obs, info)
+
+    # terminal = False
+    # while not terminal:
+    #     action = int(input("Please input an action\n"))
+    #     obs, reward, terminal, truncated, info = env.step(action)
+    #     print(obs, reward, terminal, truncated, info)
+
+    # exit()
