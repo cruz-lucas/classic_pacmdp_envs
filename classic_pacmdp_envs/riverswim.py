@@ -90,12 +90,9 @@ class RiverSwimFunctional(
         """Sample the next state given the current state and action."""
         params = self.get_default_params()
 
-        left_pos = jnp.maximum(state.position - 1, 0)
-        right_pos = jnp.minimum(state.position + 1, 5)
-
         at_last_pos = jnp.equal(state.position, 5)
-        candidates = jnp.stack([left_pos, state.position, right_pos])
-        probabilities = jnp.where(
+        delta_candidates = jnp.stack([-1, 0, 1])
+        going_right_probabilities = jnp.where(
             at_last_pos,
             jnp.asarray(
                 [1-params.p_right, 0.0, params.p_right], dtype=jnp.float32
@@ -105,8 +102,10 @@ class RiverSwimFunctional(
             ),
         )     
         
-        going_right_position = jax.random.choice(rng, candidates, p=probabilities)
-        next_position = (1 - action) * left_pos + action * going_right_position
+        going_right_position = jnp.clip(state.position + jax.random.choice(rng, delta_candidates, p=going_right_probabilities), 0, 5)
+        going_left_position = jnp.clip(state.position -1, 0, 5)
+
+        next_position = (1 - action) * going_left_position + action * going_right_position
 
         return EnvState(position=jnp.asarray(next_position, dtype=jnp.int32))
 
