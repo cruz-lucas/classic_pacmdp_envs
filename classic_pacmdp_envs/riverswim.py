@@ -64,7 +64,7 @@ class RiverSwimFunctional(
 
     metadata = {
         "render_modes": ["rgb_array"],
-        "render_fps": 1,
+        "render_fps": 30,
     }
 
     def initial(
@@ -93,12 +93,19 @@ class RiverSwimFunctional(
         left_pos = jnp.maximum(state.position - 1, 0)
         right_pos = jnp.minimum(state.position + 1, 5)
 
-        key, _ = jax.random.split(rng, 2)
+        at_last_pos = jnp.equal(state.position, 5)
         candidates = jnp.stack([left_pos, state.position, right_pos])
-        probabilities = jnp.asarray(
-            [params.p_left, params.p_stay, params.p_right], dtype=jnp.float32
-        )
-        going_right_position = jax.random.choice(key, candidates, p=probabilities)
+        probabilities = jnp.where(
+            at_last_pos,
+            jnp.asarray(
+                [1-params.p_right, 0.0, params.p_right], dtype=jnp.float32
+            ),
+            jnp.asarray(
+                [params.p_left, params.p_stay, params.p_right], dtype=jnp.float32
+            ),
+        )     
+        
+        going_right_position = jax.random.choice(rng, candidates, p=probabilities)
         next_position = (1 - action) * left_pos + action * going_right_position
 
         return EnvState(position=jnp.asarray(next_position, dtype=jnp.int32))
@@ -189,7 +196,7 @@ class RiverSwimFunctional(
 class RiverSwimJaxEnv(FunctionalJaxEnv, EzPickle):
     """Gymnasium wrapper around the functional RiverSwim environment."""
 
-    metadata = {"render_modes": ["rgb_array"], "render_fps": 1, "jax": True}
+    metadata = {"render_modes": ["rgb_array"], "render_fps": 30, "jax": True}
 
     def __init__(self, render_mode: str | None = None, **kwargs):
         """Wraps functional environment."""
