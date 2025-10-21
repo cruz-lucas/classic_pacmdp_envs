@@ -45,6 +45,7 @@ def rollout(env: FunctionalJaxEnv, rng: jax.Array, num_steps: int) -> Episode:
 
         rng, action_key = jax.random.split(rng)
 
+        # Replace the random policy
         action = jax.random.randint(
             action_key,
             shape=(),

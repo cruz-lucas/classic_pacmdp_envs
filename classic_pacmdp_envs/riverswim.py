@@ -71,7 +71,7 @@ class RiverSwimFunctional(
         self, rng: PRNGKeyType, params: RiverSwimParams | None = None
     ) -> EnvState:
         """Sample an initial state."""
-        start_position = jax.random.choice(rng, jnp.arange(2), p=jnp.full((2,), 1 / 2))
+        start_position = jax.random.choice(rng, jnp.arange(1, 3), p=jnp.full((2,), 1 / 2))
         return EnvState(position=jnp.asarray(start_position, dtype=jnp.int32))
 
     def observation(
