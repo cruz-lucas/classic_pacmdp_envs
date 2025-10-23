@@ -3,7 +3,7 @@
 from gymnasium.envs.registration import register
 
 from classic_pacmdp_envs.riverswim import RiverSwim, RiverSwimJaxEnv
-from classic_pacmdp_envs.sixarms import SixArms
+from classic_pacmdp_envs.sixarms import SixArms, SixArmsJaxEnv
 
 
 register(
@@ -20,4 +20,9 @@ register(
     entry_point="classic_pacmdp_envs.sixarms:SixArms",
 )
 
-__all__ = ["RiverSwim", "RiverSwimJaxEnv", "SixArms"]
+register(
+    id="SixArmsJax-v1",
+    entry_point="classic_pacmdp_envs.sixarms:SixArmsJaxEnv",
+)
+
+__all__ = ["RiverSwim", "RiverSwimJaxEnv", "SixArms", "SixArmsJaxEnv"]

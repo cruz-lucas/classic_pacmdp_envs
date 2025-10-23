@@ -6,13 +6,16 @@ from typing import NamedTuple, TypeAlias
 
 import jax
 import jax.numpy as jnp
+import jax.random as jrng
 import numpy as np
+from flax import struct
 from gymnasium import spaces
 from gymnasium.envs.functional_jax_env import FunctionalJaxEnv
 from gymnasium.experimental.functional import FuncEnv
 from gymnasium.utils import EzPickle
 from gymnasium.wrappers import HumanRendering
 
+PRNGKey: TypeAlias = jax.Array
 
 class RenderStateType(NamedTuple):
     """Persistent render configuration for the SixArms environment."""
@@ -26,29 +29,42 @@ class EnvState(NamedTuple):
     """Stateless SixArms environment state."""
 
     position: jax.Array
+    rng: PRNGKey
 
-
-PRNGKeyType: TypeAlias = jax.Array
+@struct.dataclass
+class EnvParams:
+    """Default parameters for Six Arms environment."""
+    num_actions: int = 6
+    num_states: int = 7
 
 
 class SixArmsFunctional(
-    FuncEnv[EnvState, jax.Array, jax.Array, jax.Array, jax.Array, RenderStateType, None]
+    FuncEnv[EnvState, jax.Array, jax.Array, jax.Array, jax.Array, RenderStateType, EnvParams]
 ):
     """SixArms environment expressed through the functional Gymnasium API."""
-
-    action_space = spaces.Discrete(6)
-    observation_space = spaces.Discrete(7)
 
     metadata = {
         "render_modes": ["rgb_array"],
         "render_fps": 1,
     }
 
-    def initial(self, rng: PRNGKeyType, params=None):
-        """Sample an initial state."""
-        return EnvState(position=jnp.asarray(0, dtype=jnp.int32))
+    def __init__(self, params: EnvParams | None = None):
+        """Initiate environment."""
+        self.default_params = self.get_default_params()
+        self.params = self.default_params if params is None else params
 
-    def observation(self, state: EnvState, rng: PRNGKeyType, params=None) -> jax.Array:
+        self.action_space = spaces.Discrete(self.params.num_actions)
+        self.observation_space = spaces.Discrete(self.params.num_states)
+
+    def initial(self, rng: PRNGKey, params: EnvParams | None = None) -> EnvState:
+        """Sample an initial state."""
+        return EnvState(
+            position=jnp.asarray(0, dtype=jnp.int32),
+            rng=rng
+        )
+
+    def observation(self, state: EnvState, params: EnvParams | None = None
+    ) -> jax.Array:
         """Returns the current state index as the observation."""
         return jnp.asarray(state.position, dtype=jnp.int32)
 
@@ -56,11 +72,12 @@ class SixArmsFunctional(
         self,
         state: EnvState,
         action: jax.Array,
-        rng: PRNGKeyType,
-        params=None,
+        params: EnvParams | None = None,
     ) -> EnvState:
         """Sample the next state given the current state and action."""
-        key, _ = jax.random.split(rng, 2)
+        params = self.params
+        rng = state.rng
+        next_rng, step_key = jax.random.split(rng, 2)
 
         position = jnp.asarray(state.position, dtype=jnp.int32)
         action = jnp.asarray(action, dtype=jnp.int32)
@@ -70,7 +87,7 @@ class SixArmsFunctional(
 
         candidates = jnp.stack([jnp.asarray(0, dtype=jnp.int32), action + 1])
         probabilities = jnp.stack([1.0 - arm_success_prob, arm_success_prob])
-        next_from_center = jax.random.choice(key, candidates, p=probabilities)
+        next_from_center = jax.random.choice(step_key, candidates, p=probabilities)
 
         branch_transitions = jnp.asarray(
             [
@@ -90,14 +107,17 @@ class SixArmsFunctional(
         is_center = jnp.equal(position, 0)
         next_position = jnp.where(is_center, next_from_center, next_from_branch)
 
-        return EnvState(position=jnp.asarray(next_position, dtype=jnp.int32))
+        return EnvState(
+            position=jnp.asarray(next_position, dtype=jnp.int32),
+            rng=next_rng
+        )
 
     def reward(
         self,
         state: EnvState,
         action: jax.Array,
         next_state: EnvState,
-        params=None,
+        params: EnvParams | None = None,
     ) -> jax.Array:
         """Compute the reward for a state transition."""
         same_state = jnp.equal(state.position, next_state.position)
@@ -106,11 +126,13 @@ class SixArmsFunctional(
         reward = reward_values * same_state.astype(jnp.float32)
         return reward
 
-    def terminal(self, state: EnvState, rng: PRNGKeyType, params=None) -> jax.Array:
+    def terminal(self, state: EnvState, params: EnvParams | None = None) -> jax.Array:
         """Sixarms has no terminal states."""
         return jnp.asarray(False, dtype=jnp.bool_)
 
-    def state_info(self, state: EnvState, params=None) -> dict[str, jax.Array]:
+    def state_info(
+        self, state: EnvState, params: EnvParams | None = None
+    ) -> dict[str, jax.Array]:
         """Return debugging info for the given state."""
         return {"position": jnp.asarray(state.position, dtype=jnp.int32)}
 
@@ -168,6 +190,48 @@ class SixArmsFunctional(
     def render_close(self, render_state, params=None) -> None:
         """Nothing to clean up for the numpy-based renderer."""
         return None
+    
+    def get_default_params(self, **kwargs) -> EnvParams:
+        """Get the default params."""
+        return EnvParams(**kwargs)
+
+
+
+class SixArmsJaxEnv(EzPickle):
+    """Jax-friendly API around the functional SixArms environment."""
+
+    metadata = {"render_modes": ["rgb_array"], "render_fps": 30, "jax": True}
+
+    def __init__(
+        self, params: EnvParams | None = None, render_mode: str | None = None, **kwargs
+    ):
+        """Wraps functional environment."""
+        EzPickle.__init__(self, render_mode=render_mode, **kwargs)
+        env = SixArmsFunctional(params=params)
+        env.transform(jax.jit)
+        self.env = env
+
+    def reset(self, rng: PRNGKey):
+        """Resets the environment using the seed."""
+        initial_state = self.env.initial(rng=rng)
+        return initial_state, self.env.observation(initial_state)
+
+    def step(self, state: EnvState, action: jax.Array):
+        """Steps through the environment using the action."""
+        next_state = self.env.transition(state, action)
+        observation = self.env.observation(next_state)
+        reward = self.env.reward(state, action, next_state)
+        terminated = self.env.terminal(next_state)
+        info = self.env.transition_info(state, action, next_state)
+
+        return (
+            next_state,
+            observation,
+            jnp.array(reward, dtype=float),
+            jnp.array(terminated, dtype=bool),
+            False,
+            info,
+        )
 
 
 class SixArms(FunctionalJaxEnv, EzPickle):
@@ -189,15 +253,29 @@ class SixArms(FunctionalJaxEnv, EzPickle):
 
 
 if __name__ == "__main__":
-    env = HumanRendering(SixArms(render_mode="rgb_array"))
+    env = SixArmsJaxEnv(render_mode="rgb_array")
 
-    obs, info = env.reset()
-    print(obs, info)
+    rng = jrng.key(0)
+    state, obs = env.reset(rng=rng)
+    print(state)
 
     terminal = False
     while not terminal:
-        action = int(input("Please input an action\n"))
-        obs, reward, terminal, truncated, info = env.step(action)
+        action = jnp.array(input("Please input an action\n"), dtype=int)
+
+        state, obs, reward, terminal, truncated, info = env.step(state, action)
         print(obs, reward, terminal, truncated, info)
 
     exit()
+    # env = HumanRendering(SixArms(render_mode="rgb_array"))
+
+    # obs, info = env.reset()
+    # print(obs, info)
+
+    # terminal = False
+    # while not terminal:
+    #     action = int(input("Please input an action\n"))
+    #     obs, reward, terminal, truncated, info = env.step(action)
+    #     print(obs, reward, terminal, truncated, info)
+
+    # exit()
